@@ -1,5 +1,27 @@
 CustomizeAirPlay
 ================
+mDNS(Multicast DNS)原理
+mDNS所使用的Port使用 5353 Port(IETF組織訂定)。
+
+Apple Bonjour協定制定Multicast IPAaddress 224.0.0.251 
+
+作用: mDNS就是來解決在區域網路內如何取得雙方的動態IP。
+
+在Apple 的設備上（電腦，筆記本，iphone，ipad等設備）都提供了這個服務。很多Linux設備也提供這個服務。Windows的設備可能沒有提供，但是如果安裝了iTunes之類的軟件的話，也提供了這個服務。
+jmDNS是一個JAVA平台的，提供mDNS服務的第三方庫。在這個jar包引入到Android項目裡，就可以獲得mDNS服務了。
+
+協定: http://www.ietf.org/rfc/rfc1035.txt
+
+封包結構: http://m.oschina.net/blog/290922
+
+DNS: http://www.csie.dyu.edu.tw/~swang/I2N/CH11.pdf
+
+
+Service Type : link (_ipp._tcp)
+
+
+DatagramSocket
+
 ```ActionScript
 //送出UDP Socket
 var udpSocket:DatagramSocket = new DatagramSocket();
