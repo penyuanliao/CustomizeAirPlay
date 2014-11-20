@@ -55,21 +55,7 @@ CustomizeAirPlay
 				bytes.writeUnsignedInt(120);//TTL
 				bytes.writeShort(String(txt.text).length); //Data length
 				writeString(bytes, txt.text); //Data
-				/*
-				//Resource record format
-				writeQueryName(bytes, service.text);
-				bytes.writeByte(0); // 00
-				bytes.writeByte(12); // 0C
-				bytes.writeByte(0); // 00
-				bytes.writeByte(1); // 01
-				// Write out TTL 32bit
-				bytes.writeFloat(0);
-				//Write out RDlENGTH
-				bytes.writeByte(0);
-				bytes.writeByte(0);
-				//RDATA
-				bytes.writeUTFBytes("74:D0:2B:95:FC:74");
-				*/
+				
 				// Send DNS packet to mDNS port and address, since we are sending from a 
 				// non-5353 port it will send the response back as a unicast DNS answer
 				udpSocket.send(bytes, 0, 0, mDNSAddress, mDNSPort);
