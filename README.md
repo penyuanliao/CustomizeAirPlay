@@ -1,221 +1,107 @@
 CustomizeAirPlay
 ================
 ```ActionScript
-////////////////////////////////////////////////////////////////////////////////
-// 
-//  Copyright (c) 2010 Renaun Erickson <renaun.com>
-// 
-//  Permission is hereby granted, free of charge, to any person
-//  obtaining a copy of this software and associated documentation
-//  files (the "Software"), to deal in the Software without
-//  restriction, including without limitation the rights to use,
-//  copy, modify, merge, publish, distribute, sublicense, and/or sell
-//  copies of the Software, and to permit persons to whom the
-//  Software is furnished to do so, subject to the following
-//  conditions:
-// 
-//  The above copyright notice and this permission notice shall be
-//  included in all copies or substantial portions of the Software.
-// 
-//  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
-//  EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
-//  OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
-//  NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
-//  HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
-//  WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
-//  FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
-//  OTHER DEALINGS IN THE SOFTWARE.
-// 
-////////////////////////////////////////////////////////////////////////////////
-/**
- Flex SDK Coding Conventions Used:
- http://opensource.adobe.com/wiki/display/flexsdk/Coding+Conventions
- **/
-package net
-{
-	import flash.utils.ByteArray;
+	//送出UDP Socket
+	var udpSocket:DatagramSocket = new DatagramSocket();
+	udpSocket.addEventListener(DatagramSocketDataEvent.DATA, dataHandler);
+	udpSocket.addEventListener(IOErrorEvent.IO_ERROR, errorHandler);
 	
-	import mx.utils.ObjectUtil;
-
-	/**
-	 * 	http://www.networksorcery.com/enp/rfc/rfc1035.txt
-	 * 
-	 * 	4. MESSAGES
-	 *  4.1. Format
-	 */
-	public class DNSMessage
-	{
-		public function DNSMessage()
-		{
-		}
-		
-		//--------------------------------------------------------------------------
-		//
-		//  Variables
-		//
-		//--------------------------------------------------------------------------
-		
-		//----------------------------------
-		//  subsection
-		//----------------------------------
-		
-		//--------------------------------------------------------------------------
-		//
-		//  Properties
-		//
-		//--------------------------------------------------------------------------
-		
-		public var transactionID:int = 0;
-		
-		public var questions:Vector.<DNSResourceRecord> = new Vector.<DNSResourceRecord>();
-
-		public var answers:Vector.<DNSResourceRecord> = new Vector.<DNSResourceRecord>();
-
-		public var authorities:Vector.<DNSResourceRecord> = new Vector.<DNSResourceRecord>();
-
-		public var additionals:Vector.<DNSResourceRecord> = new Vector.<DNSResourceRecord>();
-		
-		public var allResourceRecords:Vector.<DNSResourceRecord> = new Vector.<DNSResourceRecord>();
-		
-		//--------------------------------------------------------------------------
-		//
-		//  Methods
-		//
-		//--------------------------------------------------------------------------
-		
-		public function parse(packet:ByteArray):void 
-		{
-			questions.length = 0;
-			answers.length = 0;
-			authorities.length = 0;
-			additionals.length = 0;
-			allResourceRecords.length = 0;
-			
-			// read of Transaction ID
-			transactionID = packet.readUnsignedShort();
-			// Reading off QR, Opcode, AA, TC, RD, RA, Z, and RCode for now
-			// TODO: check for error code
-			packet.readUnsignedShort();
-			// Counts
-			var totalCount:int = 0;
-			var answerStart:int = packet.readUnsignedShort();
-			var authorityStart:int = packet.readUnsignedShort() + answerStart;
-			var additionalStart:int = packet.readUnsignedShort() + authorityStart;
-			totalCount = packet.readUnsignedShort() + additionalStart;
-			
-			var resourceBucket:Vector.<DNSResourceRecord> = questions;
-			for (var i:int = 0; i < totalCount; i++)
+/**
+			 * 	Send standard DNS requests.
+			 *  http://www.networksorcery.com/enp/rfc/rfc1035.txt
+			 */
+			private function sendQuery():void
 			{
-				if (i >= additionalStart)
-					resourceBucket = additionals
-				else if (i >= authorityStart)
-					resourceBucket = authorities;
-				else if (i >= answerStart)
-					resourceBucket = answers;
-
-				var resource:DNSResourceRecord = new DNSResourceRecord();
-				parseResourceRecord(packet, resource, (resourceBucket == questions));
-				resourceBucket.push(resource);
-				allResourceRecords.push(resource);
-			}
-		}
-		
-		/**
-		 * 
-		 */
-		private function parseResourceRecord(packet:ByteArray, resource:DNSResourceRecord, isQuestion:Boolean):void
-		{
-			// Name
-			resource.name = readDNSString(packet);
-			
-			var type:int = packet.readUnsignedShort();
-			var classType:int = packet.readUnsignedShort();
-			resource.classType = classType; // Most always 1 = IN
-			if (isQuestion)
-				return;
-			resource.ttl = packet.readUnsignedInt();
-			var dataLength:int = packet.readUnsignedShort();
-			
-			switch (type)
-			{
-				case 1:
-					resource.type = DNSResourceRecord.TYPE_A;
-					resource.data = packet.readUnsignedByte() + "." + packet.readUnsignedByte() + "." + packet.readUnsignedByte() + "." + packet.readUnsignedByte();
-					break;
-				case 5:
-					resource.type = DNSResourceRecord.TYPE_CNAME;
-					// TODO might be wrong
-					resource.data = packet.readUTFBytes(dataLength);
-					break;
-				case 12:
-					resource.type = DNSResourceRecord.TYPE_PTR;
-					resource.data = readDNSString(packet);
-					break;
-				case 33:
-					resource.type = DNSResourceRecord.TYPE_SRV;
-					resource.data = new Object();
-					resource.data.priority = packet.readUnsignedShort();
-					resource.data.weight = packet.readUnsignedShort();
-					resource.data.port = packet.readUnsignedShort();
-					resource.data.target = readDNSString(packet);
-					break;
-				case 16:
-					resource.type = DNSResourceRecord.TYPE_TXT;
-					resource.data = new Object();
-					var len2:int = 0;
-					var pos:int = 0;
-					var parts:Array = [];
-					while (pos < dataLength)
-					{
-						len2 = packet.readUnsignedByte();
-						parts = packet.readUTFBytes(len2).split("=");
-						resource.data[parts[0]] = parts[1];
-						pos += len2 + 1;
-					}
-					break;
-				default:
-					resource.type = DNSResourceRecord.TYPE_UNSUPPORTED;
-					resource.data = new ByteArray();
-					packet.readBytes(resource.data, 0, dataLength);
-					break;				
-			}
-		}
-		
-		/**
-		 * 	Handles reading DNS strings and watches out for compression
-		 *  pointers.
-		 */
-		private function readDNSString(packet:ByteArray):String
-		{
-			var value:String = "";
-			var len:int = packet.readUnsignedByte();
-			var lastPosition:int = 0;
-			var offset:int = 0;
-			while (len > 0)
-			{
-				if (len > 63)
+				// Don't bind until first message sent out and only bind once
+				if (udpSocket.localAddress == null)
 				{
-					// TODO Only reading byte which limits offset to 256, rfc shows it could be more
-					offset = packet.readUnsignedByte(); 
-					if (lastPosition < packet.position)
-						lastPosition = packet.position;
-					packet.position = offset;
-					len = packet.readUnsignedByte();
-				}
-				value += packet.readUTFBytes(len);
-				len = packet.readUnsignedByte();
-				if (len > 0)
-					value += ".";
+					udpSocket.bind(7000);
+					udpSocket.receive();			
+					
+				}				
+				trace("Receiving on: " + udpSocket.localAddress+":"+udpSocket.localPort + "\n");
+				var bytes:ByteArray = new ByteArray();
+				
+				// DNS Header
+				bytes.writeFloat(0); 
+				bytes.writeByte(0); // First 5 bytes, Transaction ID: 0x0000, Query, Opcode: 0x000 etc..
+				bytes.writeByte(1);	// 1 Question
+				bytes.writeByte(0); // No Answer RRs
+				bytes.writeByte(0); // No Authority RRs
+				bytes.writeFloat(0); // No Additional RRs, and 3 bytes of 0s
+				// Query Name Chunk
+				writeQueryName(bytes, service.text);
+				// Write out Type and Class (PTR/12) and 00 01
+				bytes.writeByte(0); // 00
+				bytes.writeByte(12); // 0C
+				bytes.writeByte(0); // 00
+				bytes.writeByte(1); // 01
+				
+				bytes.writeShort(0x21); //Type
+				bytes.writeByte(0x80); // FlushCache
+				bytes.writeByte(0x01); // Class IN
+				bytes.writeUnsignedInt(0); //Time to live
+				bytes.writeShort(8 + mDNSAddress.length); //Data length
+				bytes.writeShort(0x00); //priority
+				bytes.writeShort(0x00); //weight
+				bytes.writeShort(7000); //port
+				writeString(bytes, mDNSAddress);
+				bytes.writeByte(0x00); //end
+				//TXT Record
+				bytes.writeShort(0xC00C); //Name ^^^
+				bytes.writeShort(0x10); //Type TXT
+				bytes.writeByte(0x80); //Flush Cache
+				bytes.writeByte(0x01); // Class IN
+				bytes.writeUnsignedInt(120);//TTL
+				bytes.writeShort(String(txt.text).length); //Data length
+				writeString(bytes, txt.text); //Data
+				/*
+				//Resource record format
+				writeQueryName(bytes, service.text);
+				bytes.writeByte(0); // 00
+				bytes.writeByte(12); // 0C
+				bytes.writeByte(0); // 00
+				bytes.writeByte(1); // 01
+				// Write out TTL 32bit
+				bytes.writeFloat(0);
+				//Write out RDlENGTH
+				bytes.writeByte(0);
+				bytes.writeByte(0);
+				//RDATA
+				bytes.writeUTFBytes("74:D0:2B:95:FC:74");
+				*/
+				// Send DNS packet to mDNS port and address, since we are sending from a 
+				// non-5353 port it will send the response back as a unicast DNS answer
+				udpSocket.send(bytes, 0, 0, mDNSAddress, mDNSPort);
 			}
-			// If pointer reset offset to last position
-			if (offset > 0)
+/**
+			 * 	Splits the service mDNS string and packs the bytes 
+			 *  correctly in the <code>bytes</codes> parameter.
+			 */
+			private function writeQueryName(bytes:ByteArray, query:String = "_home-sharing._tcp"):void
 			{
-				packet.position = lastPosition;
-				offset = 0;
-				lastPosition = 0;
+				var arr:Array = query.split(".");
+				var len:int = arr.length;
+				for (var i:int = 0; i < len; i++)
+				{
+					bytes.writeByte((arr[i] as String).length);
+					bytes.writeUTFBytes(arr[i]);
+				}
+				// Add .local and 00
+				bytes.writeByte(5);
+				bytes.writeUTFBytes("local");
+				bytes.writeByte(0);
 			}
-			return value;
-		}
-	}
-}
+			private function writeString(bytes:ByteArray, string:String):void
+			{
+				var ar:Array = string.split(".");
+				var len:int = ar.length;
+				
+				for (var i:int = 0; i < len; i++)
+				{
+					bytes.writeByte((ar[i] as String).length);
+					bytes.writeUTFBytes(ar[i]);
+				}
+			}
+	
 ```
